@@ -3,15 +3,18 @@ package main
 import (
 	"fmt"
 	"github.com/k3a/html2text"
+	"golang.org/x/net/html"
 	"goroutines-homework/words"
+	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
 )
 
 type Words struct {
-	Key string
+	Key   string
 	Value int
 }
 
@@ -19,14 +22,14 @@ var Sw []Words
 
 var allWords string
 
-var urls string
+var urls []string
 
-var url string
+var baseUrl string
 
 //func newUrls(urls string) string { TODO
 //	u := strings.Fields(urls)
 //	for _, u := range u {
-//		nu := url + u
+//		nu := baseUrl + u
 //		fmt.Println(nu)
 //		z := 5
 //		fmt.Println(z)
@@ -35,33 +38,68 @@ var url string
 //	return "no string"
 //}
 
-func ulrRead(u string) []string{
+func urlGen(u string) {
+	resp, err := http.Get(u)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	r := resp.Body
+	for _, l := range getLinks(r) {
+		if string(l[0]) == "/" {
+			urls = append(urls, l)
+		}
+	}
+
+}
+
+func ulrRead(u string) []string {
 
 	fmt.Printf("HTML code of %s:\n", u)
 	resp, err := http.Get(u)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer resp.Body.Close()
+	r := resp.Body
 
-	html, err := ioutil.ReadAll(resp.Body)
+	html, err := ioutil.ReadAll(r)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	plain := html2text.HTML2Text(string(html))
 	w := strings.Fields(plain)
+
 	return w
+}
+
+func getLinks(body io.Reader) []string {
+	var links []string
+	z := html.NewTokenizer(body)
+	for {
+		tt := z.Next()
+
+		switch tt {
+		case html.ErrorToken:
+			return links
+		case html.StartTagToken, html.EndTagToken:
+			token := z.Token()
+			if "a" == token.Data {
+				for _, attr := range token.Attr {
+					if attr.Key == "href" {
+						links = append(links, attr.Val)
+					}
+
+				}
+			}
+
+		}
+	}
 }
 
 func addWords(ws []string) {
 	for _, w := range ws {
 		if len(allWords) < 5000 {
-			path := []rune(w)
-			firstChar := string(path[0:1])
-			//fmt.Println(firstChar)
-			if firstChar == "/" { //adding urls
-				urls += " " + w
-			}
 			allWords += " " + w
 		}
 	}
@@ -79,16 +117,45 @@ func sortWords(s string) {
 }
 
 
-func main() {
-	fmt.Scanln(&url)
+//func ExampleScrape() {
+//	// Request the HTML page.
+//	res, err := http.Get("http://service1001.com")
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	defer res.Body.Close()
+//	if res.StatusCode != 200 {
+//		log.Fatalf("status code error: %d %s", res.StatusCode, res.Status)
+//	}
+//
+//	// Load the HTML document
+//	doc, err := goquery.NewDocumentFromReader(res.Body)
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//
+//	// Find the review items
+//	doc.Find("body").Each(func(i int, s *goquery.Selection) {
+//		// For each item found, get the title
+//		title := s.Find("p").Text()
+//		fmt.Printf("Review %d: %s\n", i, title)
+//	})
+//}
 
-	addWords(ulrRead(url))
-	//addWords(ulrRead(newUrls(urls))) TODO read from inner urls
+func main() {
+	//ExampleScrape()
+	//baseUrl := os.Args[1:]
+	baseUrl = "http://service1001.com"
+
+	addWords(ulrRead(baseUrl))
+	urlGen(baseUrl)
+
+	for _, subUrl := range urls {
+		addWords(ulrRead(baseUrl + subUrl))
+	}
 	sortWords(allWords)
 
-	//fmt.Println(urls)
-
-	fmt.Printf("HTML code of %s:\n", url)
+	fmt.Printf("HTML code of %s:\n", baseUrl)
 	for _, v := range Sw {
 		fmt.Printf("%s: %d times\n", v.Key, v.Value)
 	}
