@@ -1,0 +1,8 @@
+version: '3'
+
+  database:
+    image: mariadb
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+    volumes:
+      - /data:/var/lib/mysql
